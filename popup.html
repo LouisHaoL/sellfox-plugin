@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SellFox Plugin</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 320px;
+      min-height: 200px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .popup-header {
+      padding: 20px;
+      text-align: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .popup-header h1 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 5px;
+    }
+
+    .popup-header p {
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    .popup-content {
+      padding: 20px;
+    }
+
+    .status-section {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+    }
+
+    .status-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .status-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .status-label {
+      font-size: 13px;
+      opacity: 0.9;
+    }
+
+    .status-value {
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      display: inline-block;
+      margin-right: 5px;
+    }
+
+    .status-dot.inactive {
+      background: #ef4444;
+    }
+
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .action-btn {
+      width: 100%;
+      padding: 12px 20px;
+      background: white;
+      color: #667eea;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .action-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    .action-btn:active {
+      transform: translateY(0);
+    }
+
+    .action-btn.secondary {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+    }
+
+    .action-btn.secondary:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .popup-footer {
+      padding: 15px 20px;
+      text-align: center;
+      font-size: 11px;
+      opacity: 0.7;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .popup-footer a {
+      color: white;
+      text-decoration: underline;
+    }
+
+    .notification {
+      position: fixed;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: white;
+      color: #333;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-size: 13px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      z-index: 1000;
+    }
+
+    .notification.show {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="popup-header">
+    <h1>🦊 SellFox Plugin</h1>
+    <p>SellFox 网站增强插件</p>
+  </div>
+
+  <div class="popup-content">
+    <div class="status-section">
+      <div class="status-item">
+        <span class="status-label">连接状态</span>
+        <span class="status-value">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">检测中...</span>
+        </span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">当前页面</span>
+        <span class="status-value" id="pageStatus">未连接</span>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="action-btn" id="refreshBtn">🔄 刷新状态</button>
+      <button class="action-btn" id="openSiteBtn">🌐 打开 SellFox</button>
+      <button class="action-btn secondary" id="settingsBtn">⚙️ 设置</button>
+    </div>
+  </div>
+
+  <div class="popup-footer">
+    <p>版本 1.0.0 | <a href="#" id="helpLink">帮助</a></p>
+  </div>
+
+  <div class="notification" id="notification"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

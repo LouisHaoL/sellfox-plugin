@@ -1,0 +1,42 @@
+# Node modules
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Build outputs
+dist/
+build/
+*.crx
+*.pem
+
+# OS generated files
+Thumbs.db
+.DS_Store
+
+# Logs
+logs/
+*.log
+
+# Environment variables
+.env
+.env.local
+
+# Chrome Web Store assets
+webstore-assets/
+screenshots/
+
+# Backup files
+*.bak
+*.backup

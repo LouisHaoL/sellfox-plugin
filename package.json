@@ -1,0 +1,32 @@
+{
+  "name": "sellfox-plugin",
+  "version": "1.0.0",
+  "description": "SellFox 网站浏览器扩展 - 在 SellFox 页面中添加自定义按钮和调用 API",
+  "private": true,
+  "scripts": {
+    "build": "echo \"No build process required for vanilla JS extension\"",
+    "watch": "echo \"Use Chrome's developer mode for auto-reload during development\"",
+    "lint": "eslint *.js",
+    "format": "prettier --write \"*.js\" \"*.json\" \"*.md\""
+  },
+  "keywords": [
+    "chrome-extension",
+    "browser-extension",
+    "sellfox",
+    "productivity"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "eslint": "^8.0.0",
+    "prettier": "^3.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/sellfox-plugin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-username/sellfox-plugin/issues"
+  },
+  "homepage": "https://github.com/your-username/sellfox-plugin#readme"
+}

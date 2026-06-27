@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>创建 SellFox Plugin 图标</title>
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+    }
+    .icon-preview {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+    canvas {
+      border: 1px solid #ccc;
+    }
+    button {
+      padding: 10px 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+  </style>
+</head>
+<body>
+  <h1>创建 SellFox Plugin 图标</h1>
+  <p>点击按钮生成并下载图标</p>
+
+  <div class="icon-preview">
+    <canvas id="icon16" width="16" height="16"></canvas>
+    <canvas id="icon48" width="48" height="48"></canvas>
+    <canvas id="icon128" width="128" height="128"></canvas>
+  </div>
+
+  <button onclick="createIcons()">创建并下载图标</button>
+
+  <script>
+    function createIcon(size, canvas) {
+      const ctx = canvas.getContext('2d');
+
+      // 创建渐变背景
+      const gradient = ctx.createLinearGradient(0, 0, size, size);
+      gradient.addColorStop(0, '#667eea');
+      gradient.addColorStop(1, '#764ba2');
+
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, size, size);
+
+      // 绘制狐狸表情 🦊
+      ctx.fillStyle = 'white';
+      ctx.font = `${size * 0.6}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🦊', size / 2, size / 2);
+
+      // 添加边框
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.lineWidth = Math.max(1, size / 16);
+      ctx.strokeRect(0, 0, size, size);
+    }
+
+    function downloadIcon(canvas, filename) {
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+
+    function createIcons() {
+      // 创建不同尺寸的图标
+      createIcon(16, document.getElementById('icon16'));
+      createIcon(48, document.getElementById('icon48'));
+      createIcon(128, document.getElementById('icon128'));
+
+      // 下载图标
+      setTimeout(() => {
+        downloadIcon(document.getElementById('icon16'), 'icon16.png');
+        downloadIcon(document.getElementById('icon48'), 'icon48.png');
+        downloadIcon(document.getElementById('icon128'), 'icon128.png');
+      }, 100);
+
+      alert('图标已创建并下载！请将下载的图标文件放到 icons/ 目录中。');
+    }
+
+    // 页面加载时预览图标
+    window.onload = () => {
+      createIcon(16, document.getElementById('icon16'));
+      createIcon(48, document.getElementById('icon48'));
+      createIcon(128, document.getElementById('icon128'));
+    };
+  </script>
+</body>
+</html>
