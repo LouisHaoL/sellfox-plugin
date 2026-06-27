@@ -1,23 +1,15 @@
 # 🦊 SellFox Plugin
 
-一个为 SellFox 网站提供增强功能的浏览器扩展。
+一个为 SellFox ERP 系统提供增强功能的浏览器扩展。
 
 ## ✨ 功能特性
 
-### 核心功能
-- **📊 数据注入**: 在 SellFox 页面中添加自定义操作按钮
-- **🔗 API 调用**: 与 SellFox 同域名 API 进行交互
-- **📥 数据导出**: 导出页面数据到本地文件
-- **⚡ 批量操作**: 支持批量处理选中的项目
-- **📈 分析报告**: 生成和显示数据分析报告
-- **🔔 通知系统**: 实时显示操作反馈
-
-### 专用功能
-- **🚢 超运费采购单分析**: 在采购管理页面自动识别并分析运费超标的采购单
+### 当前功能
+- **🚢 批量取消超运费采购单**: 在赛狐ERP采购管理页面自动识别并批量取消单均运费大于1的1688订单
   - 自动检测页面状态（待到货 + 单据）
   - 智能提取表格数据并计算运费比率
-  - 可视化展示超运费采购单详情
-  - 支持汇总统计和批量分析
+  - 一键批量取消超运费采购单
+  - 提供详细的分析报告和操作反馈
 
 ## 📦 安装方法
 
@@ -39,7 +31,7 @@
 
 ## 🚀 使用方法
 
-### 超运费采购单分析（推荐功能）
+### 批量取消超运费采购单
 
 #### 自动激活条件
 当满足以下条件时，插件会自动注入分析按钮：
@@ -48,32 +40,19 @@
 - "单据"按钮处于激活状态
 
 #### 使用步骤
-1. 导航到采购管理页面
+1. 导航到赛狐ERP采购管理页面
 2. 切换到"待到货"标签
 3. 点击"单据"按钮
-4. 在按钮栏中找到"取消超运费采购单"按钮
+4. 在页面右侧找到"批量取消超运费"按钮
 5. 点击按钮开始分析
 6. 查看弹窗中的超运费采购单详情
+7. 确认后批量取消符合条件的订单
 
 #### 功能详情
 详细使用说明请查看 [PURCHASE_ANALYSIS.md](PURCHASE_ANALYSIS.md)
 
-### 基本功能使用
-
-#### 通用按钮功能
-1. 访问 [SellFox 网站](https://www.sellfox.com)
-2. 页面右侧会显示插件按钮组
-3. 点击相应按钮执行操作
-
-#### 可用按钮
-
-- **📊 导出数据**: 将当前页面数据导出为 JSON 文件
-- **⚡ 批量操作**: 对选中的项目执行批量操作
-- **📈 分析报告**: 生成并显示数据分析报告
-
-#### 右键菜单
-
-在 SellFox 页面上右键点击，可以选择"使用 SellFox Plugin 导出数据"快速导出。
+### 功能详情
+详细使用说明请查看 [PURCHASE_ANALYSIS.md](PURCHASE_ANALYSIS.md)
 
 ## 🛠️ 开发指南
 
@@ -128,41 +107,20 @@ displayOverShippingResults(data) {
 
 #### 通用功能定制
 
-##### 1. 修改 API 端点
+##### 1. 修改运费阈值
 
-编辑 `content.js` 中的 `siteConfig`:
-
-```javascript
-this.siteConfig = {
-  apiBase: 'https://www.sellfox.com/api',  // 修改为你的 API 基础路径
-  buttonSelectors: []
-};
-```
-
-##### 2. 添加新按钮
-
-在 `content.js` 的 `createButtonContainer` 方法中添加：
+编辑 `content.js` 中的相关逻辑：
 
 ```javascript
-const buttons = [
-  { text: '导出数据', action: 'exportData', icon: '📊' },
-  { text: '你的按钮', action: 'yourAction', icon: '🔧' },
-  // ...
-];
+// 修改计算阈值
+filterOverShippingData(tableData) {
+  return tableData.filter(row => row.ratio > 1); // 修改阈值
+}
 ```
 
-然后在 `handleButtonClick` 和相应方法中实现功能。
+##### 2. 添加新功能
 
-##### 3. 调用 API
-
-使用 `callApi` 方法：
-
-```javascript
-const result = await this.callApi('/your-endpoint', {
-  method: 'POST',
-  body: JSON.stringify({ key: 'value' })
-});
-```
+在 `content.js` 中添加新的按钮和处理逻辑。
 
 ### 调试方法
 
@@ -189,37 +147,16 @@ const result = await this.callApi('/your-endpoint', {
 
 ## 🔐 安全说明
 
-- 扩展仅在 `https://www.sellfox.com/*` 域名下运行
-- 所有 API 调用都使用 `credentials: 'include'` 携带认证信息
-- CSRF Token 会自动从页面 meta 标签或 cookie 中提取
-
-## 📝 API 接口说明
-
-插件假设 SellFox 提供以下 API 端点（需要根据实际情况调整）：
-
-- `POST /api/export` - 导出数据
-- `POST /api/batch` - 批量操作
-- `POST /api/report` - 生成报告
-
-### API 调用示例
-
-```javascript
-// Content Script 中的调用
-const data = await this.callApi('/export', {
-  method: 'POST',
-  headers: {
-    'Custom-Header': 'value'
-  }
-});
-```
+- 扩展仅在赛狐ERP相关页面运行
+- 所有操作都在浏览器本地执行
+- 不会收集或上传任何用户数据
 
 ## 🎯 未来计划
 
-- [ ] 添加用户设置页面
-- [ ] 支持自定义按钮位置
-- [ ] 添加数据可视化图表
+- [ ] 添加更多ERP页面增强功能
+- [ ] 支持自定义运费阈值设置
+- [ ] 添加操作历史记录
 - [ ] 支持多语言
-- [ ] 添加快捷键支持
 
 ## 📄 许可证
 
