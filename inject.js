@@ -25,7 +25,7 @@
     try {
       var args = Array.prototype.slice.call(arguments);
       args.unshift('[SellFox Plugin inject]');
-      console.log.apply(console, args);
+      console.error.apply(console, args);
     } catch (e) {}
   }
 

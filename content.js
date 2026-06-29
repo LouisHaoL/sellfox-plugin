@@ -348,25 +348,65 @@ class SellFoxPlugin {
 
       // 将按钮作为buttonBar的子节点添加到最后
       buttonBar.appendChild(analyzeButton);
-      this.purchasePageInjected = true;
 
-      this.showNotification('超运费分析功能已就绪', 'success');
+      // 创建"取消采购单"按钮
+      const cancelPurchaseButton = shadowRoot.createElement ? shadowRoot.createElement('button') : document.createElement('button');
+      cancelPurchaseButton.id = 'sellfox-cancel-purchase-btn';
+      cancelPurchaseButton.className = 'sellfox-cancel-purchase-btn';
+      cancelPurchaseButton.textContent = '取消采购单';
+      cancelPurchaseButton.style.cssText = `
+        margin-left: 10px;
+        padding: 8px 16px;
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+      `;
+
+      // 添加悬停效果
+      cancelPurchaseButton.addEventListener('mouseenter', function() {
+        this.style.transform = 'translateY(-2px)';
+        this.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.4)';
+      });
+
+      cancelPurchaseButton.addEventListener('mouseleave', function() {
+        this.style.transform = 'translateY(0)';
+        this.style.boxShadow = '0 2px 8px rgba(59, 130, 246, 0.3)';
+      });
+
+      // 点击事件
+      cancelPurchaseButton.addEventListener('click', () => {
+        this.showCancelPurchaseConfirm();
+      });
+
+      buttonBar.appendChild(cancelPurchaseButton);
+
+      this.purchasePageInjected = true;
 
     } catch (error) {
       console.error('[SellFox Plugin] 按钮创建和插入失败:', error);
     }
   }
 
-  // 隐藏「取消超运费采购单」按钮（保留 DOM 节点，切回「待到货 + 单据」时可直接显示）
+  // 隐藏「取消超运费采购单」按钮和「取消采购单」按钮（保留 DOM 节点，切回「待到货 + 单据」时可直接显示）
   hidePurchaseButton() {
     try {
       const shadowRoot = this.getShadowRoot();
       if (!shadowRoot) {
         return;
       }
-      const btn = shadowRoot.getElementById('sellfox-analyze-shipping-btn');
-      if (btn) {
-        btn.style.display = 'none';
+      const analyzeBtn = shadowRoot.getElementById('sellfox-analyze-shipping-btn');
+      if (analyzeBtn) {
+        analyzeBtn.style.display = 'none';
+      }
+      const cancelBtn = shadowRoot.getElementById('sellfox-cancel-purchase-btn');
+      if (cancelBtn) {
+        cancelBtn.style.display = 'none';
       }
     } catch (error) {
       console.error('[SellFox Plugin] 隐藏按钮失败:', error);
@@ -561,7 +601,6 @@ class SellFoxPlugin {
         }
       }
 
-      console.log(`[SellFox Plugin] 数据提取完成: 总行数=${rowCount}, 处理=${processedRows}, 跳过=${skippedRows}, 有效数据=${tableData.length}`);
       return tableData;
 
     } catch (error) {
@@ -630,7 +669,6 @@ class SellFoxPlugin {
         this.mergeOrderIdMap(data.payload);
       }
     });
-    console.log('[SellFox Plugin] 已注册 page.json 拦截监听');
   }
 
   // 把拦截到的行数据合并进 orderIdMap
@@ -642,7 +680,8 @@ class SellFoxPlugin {
       const entry = {
         orderId: r.orderId,
         tradeId: r.tradeId || '',
-        purchaseNo: r.purchaseNo || ''
+        purchaseNo: r.purchaseNo || '',
+        alibabaInternalStatus: r.alibabaInternalStatus
       };
       if (r.tradeId) {
         this.orderIdMap[String(r.tradeId)] = entry;
@@ -653,7 +692,6 @@ class SellFoxPlugin {
         this.orderIdMap['po:' + String(r.purchaseNo)] = entry;
       }
     });
-    console.log(`[SellFox Plugin] 拦截到 ${rows.length} 行，新增 orderId 映射 ${added} 条，累计 ${Object.keys(this.orderIdMap).length} 个键`);
   }
 
   // 根据表格行（含 order1688/tradeId 或 orderNumber/purchaseNo）解析出 orderId
@@ -688,13 +726,13 @@ class SellFoxPlugin {
   }
 
   // 调用取消 1688 订单接口
-  async cancelAlibabaOrder(orderId, reason) {
+  async cancelAlibabaOrder(orderId, reason, isPurchaseCancel = false) {
     const url = this.siteConfig.apiBase + '/alibabaOrder/cancel.json';
     const body = {
       id: orderId,
-      reason: reason,
+      reason: isPurchaseCancel ? '' : (reason || ''),
       source: 'PURCHASE_ORDER',
-      purchaseOperationType: 0
+      purchaseOperationType: isPurchaseCancel ? 1 : 0
     };
     const resp = await fetch(url, {
       method: 'POST',
@@ -709,7 +747,7 @@ class SellFoxPlugin {
     const text = await resp.text();
     let json = null;
     try { json = JSON.parse(text); } catch (e) { /* 非JSON响应 */ }
-    const ok = resp.ok && json && (json.code === 0 || json.code === 200 || json.success === true);
+    const ok = resp.ok && json && json.code === 0;
     return {
       ok,
       status: resp.status,
@@ -793,10 +831,9 @@ class SellFoxPlugin {
     if (failList.length) summary += `<br>失败明细：${this.escapeHtml(failList.join('；'))}`;
     statusBox.innerHTML = summary;
 
-    this.showNotification(
-      `取消完成：成功 ${success}，失败 ${fail}`,
-      fail > 0 ? 'error' : 'success'
-    );
+    // 右上角提示显示成功和失败数量
+    const notificationMsg = `✅ 成功 ${success}，❌ 失败 ${fail}`;
+    this.showNotification(notificationMsg, fail > 0 ? 'error' : 'success');
 
     // 操作结束后自动关闭弹窗（短暂停留，便于看到最终状态）
     await this.sleep(600);
@@ -820,6 +857,581 @@ class SellFoxPlugin {
     let s = '';
     for (let i = 0; i < 12; i++) s += chars.charAt(Math.floor(Math.random() * chars.length));
     return s;
+  }
+
+  // ===== 取消采购单相关方法 =====
+
+  // 显示取消采购单确认弹窗
+  showCancelPurchaseConfirm() {
+    try {
+      const shadowRoot = this.getShadowRoot();
+      if (!shadowRoot) {
+        this.showNotification('无法访问页面内容', 'error');
+        return;
+      }
+
+      // 只从一个tbody中提取数据，避免重复（使用fixed-left-wrapper的tbody）
+      // 因为vxe-table将同一行拆分到三个wrapper中，只需从其中一个提取即可
+      const tbodySelectors = [
+        'div.vxe-table--fixed-left-wrapper table tbody',
+        'div.vxe-table--body-wrapper table tbody',
+        'div.vxe-table--fixed-right-wrapper table tbody'
+      ];
+
+      let targetTbody = null;
+      for (const selector of tbodySelectors) {
+        targetTbody = shadowRoot.querySelector(selector);
+        if (targetTbody) break;
+      }
+
+      if (!targetTbody) {
+        this.showNotification('未找到表格数据', 'error');
+        return;
+      }
+
+      const tableRows = targetTbody.querySelectorAll('tr');
+      const checkedData = [];
+      let hasChecked = false;
+
+      tableRows.forEach((row, index) => {
+        // 查找该行中是否包含col--checkbox列
+        const checkboxCol = row.querySelector('.col--checkbox');
+        if (checkboxCol) {
+          // 查找带有is--checked class的复选框span元素
+          const checkedCheckbox = checkboxCol.querySelector('.vxe-cell--checkbox.is--checked');
+          if (checkedCheckbox) {
+            hasChecked = true;
+            // 提取该行的数据
+            const rowData = this.extractRowData(row, index);
+            if (rowData) {
+              checkedData.push(rowData);
+            }
+          }
+        }
+      });
+
+      // 如果没有勾选的数据，则将表格内的数据全部计入
+      let allData = [];
+      let isAllData = false;
+
+      if (!hasChecked) {
+        tableRows.forEach((row, index) => {
+          const checkboxCol = row.querySelector('.col--checkbox');
+          if (checkboxCol) {
+            // 提取所有包含复选框列的行数据
+            const rowData = this.extractRowData(row, index);
+            if (rowData) {
+              allData.push(rowData);
+            }
+          }
+        });
+        isAllData = true;
+      }
+
+      const finalData = isAllData ? allData : checkedData;
+
+      if (finalData.length === 0) {
+        this.showNotification('未找到可取消的采购单数据', 'error');
+        return;
+      }
+
+      // 显示确认弹窗，传入是否为全部数据的标识
+      this.displayCancelConfirmModal(finalData, isAllData);
+
+    } catch (error) {
+      console.error('[SellFox Plugin] 获取选中行数据失败:', error);
+      this.showNotification('获取选中行数据失败', 'error');
+    }
+  }
+
+  // 从表格行中提取数据
+  extractRowData(row, index) {
+    try {
+      const shadowRoot = this.getShadowRoot();
+      if (!shadowRoot) {
+        return null;
+      }
+
+      // 获取列colid映射（如果已存在）
+      if (!this.columnIds) {
+        this.columnIds = this.getColumnIds();
+      }
+
+      const columnIds = this.columnIds || {};
+
+      // 获取所有三个wrapper的tbody，因为列被分散在不同wrapper中
+      const wrapperSelectors = [
+        'div.vxe-table--fixed-left-wrapper table tbody',
+        'div.vxe-table--body-wrapper table tbody',
+        'div.vxe-table--fixed-right-wrapper table tbody'
+      ];
+
+      const tbodies = [];
+      const seen = new Set();
+      wrapperSelectors.forEach(sel => {
+        shadowRoot.querySelectorAll(sel).forEach(t => {
+          if (!seen.has(t)) {
+            seen.add(t);
+            tbodies.push(t);
+          }
+        });
+      });
+
+      if (tbodies.length === 0) {
+        console.error('[SellFox Plugin] 未找到任何 tbody');
+        return null;
+      }
+
+      // 从每个tbody中获取对应行索引的行，并合并所有单元格
+      const allCells = [];
+      tbodies.forEach(tbody => {
+        const rows = tbody.querySelectorAll('tr');
+        if (rows[index]) {
+          rows[index].querySelectorAll('td').forEach(td => allCells.push(td));
+        }
+      });
+
+      // 辅助函数：在单元格数组中查找指定colid的单元格
+      const findCell = (cellList, colClass) => {
+        if (!colClass) return null;
+        for (let i = 0; i < cellList.length; i++) {
+          if (cellList[i].classList && cellList[i].classList.contains(colClass)) {
+            return cellList[i];
+          }
+        }
+        return null;
+      };
+
+      // 查找各列单元格
+      const orderNumberCell = findCell(allCells, columnIds.orderNumber);
+      const order1688Cell = findCell(allCells, columnIds.order1688);
+      const paymentStatusCell = findCell(allCells, columnIds.paymentStatus);
+
+      // 提取数据
+      const orderNumber = orderNumberCell ? this.getCellValue(orderNumberCell) : '';
+      const order1688 = order1688Cell ? this.getCellValue(order1688Cell) : '';
+      const paymentStatus = paymentStatusCell ? this.getCellValue(paymentStatusCell) : '';
+
+      // 从拦截的数据中获取alibabaInternalStatus
+      let alibabaInternalStatus = null;
+      let orderId = null;
+
+      // 先尝试通过tradeId匹配
+      if (order1688) {
+        const tradeIdKey = String(order1688).trim();
+        const tradeIdNumericKey = String(order1688).replace(/\D/g, '');
+
+        if (this.orderIdMap[tradeIdKey]) {
+          const entry = this.orderIdMap[tradeIdKey];
+          alibabaInternalStatus = entry.alibabaInternalStatus;
+          orderId = entry.orderId;
+        } else if (this.orderIdMap[tradeIdNumericKey]) {
+          const entry = this.orderIdMap[tradeIdNumericKey];
+          alibabaInternalStatus = entry.alibabaInternalStatus;
+          orderId = entry.orderId;
+        }
+      }
+
+      // 如果通过tradeId没找到，尝试通过purchaseNo匹配
+      if (alibabaInternalStatus === null && orderNumber) {
+        const purchaseNoKey = 'po:' + String(orderNumber).trim();
+        if (this.orderIdMap[purchaseNoKey]) {
+          const entry = this.orderIdMap[purchaseNoKey];
+          alibabaInternalStatus = entry.alibabaInternalStatus;
+          orderId = entry.orderId;
+        }
+      }
+
+      // 如果还是没找到，从拦截数据中遍历查找
+      if (alibabaInternalStatus === null) {
+        for (const key in this.orderIdMap) {
+          const entry = this.orderIdMap[key];
+          if (entry.purchaseNo === orderNumber || String(entry.tradeId) === String(order1688)) {
+            alibabaInternalStatus = entry.alibabaInternalStatus;
+            orderId = entry.orderId;
+            break;
+          }
+        }
+      }
+
+      return {
+        orderNumber: orderNumber || `UNKNOWN-${index}`,
+        order1688: order1688 || '',
+        paymentStatus: paymentStatus || '',
+        alibabaInternalStatus: alibabaInternalStatus,
+        orderId: orderId,
+        rowIndex: index
+      };
+
+    } catch (error) {
+      console.error(`[SellFox Plugin] 提取行 ${index} 数据失败:`, error);
+      return null;
+    }
+  }
+
+  // 显示取消确认弹窗
+  displayCancelConfirmModal(data, isAllData = false) {
+    // 创建弹窗
+    const modal = document.createElement('div');
+    modal.id = 'sellfox-cancel-confirm-modal';
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 99999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    `;
+
+    const modalContent = document.createElement('div');
+    modalContent.style.cssText = `
+      background: white;
+      border-radius: 12px;
+      width: 90%;
+      max-width: 900px;
+      max-height: 85vh;
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    `;
+
+    // 创建标题栏
+    const header = document.createElement('div');
+    header.style.cssText = `
+      padding: 20px;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    `;
+
+    const title = document.createElement('h3');
+    const titleText = isAllData ? `取消采购单确认 - 全部数据 (${data.length} 条)` : `取消采购单确认 (${data.length} 条)`;
+    title.textContent = titleText;
+    title.style.cssText = `
+      margin: 0;
+      color: #1f2937;
+      font-size: 18px;
+      font-weight: 600;
+    `;
+
+    const closeBtn = document.createElement('span');
+    closeBtn.innerHTML = '&times;';
+    closeBtn.style.cssText = `
+      font-size: 28px;
+      font-weight: bold;
+      color: #9ca3af;
+      cursor: pointer;
+      line-height: 1;
+      transition: color 0.2s ease;
+    `;
+
+    closeBtn.addEventListener('mouseenter', function() {
+      this.style.color = '#4b5563';
+    });
+
+    closeBtn.addEventListener('mouseleave', function() {
+      this.style.color = '#9ca3af';
+    });
+
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+
+    // 创建表格容器
+    const tableContainer = document.createElement('div');
+    tableContainer.style.cssText = `
+      padding: 20px;
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+    `;
+
+    const table = document.createElement('table');
+    table.style.cssText = `
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    `;
+
+    const thead = document.createElement('thead');
+
+    // 构建表头
+    const headerCells = [
+      '<th style="padding: 12px; text-align: left; font-weight: 600; color: #374151;">采购单号</th>',
+      '<th style="padding: 12px; text-align: left; font-weight: 600; color: #374151;">1688订单号</th>',
+      '<th style="padding: 12px; text-align: left; font-weight: 600; color: #374151;">请款状态</th>',
+      '<th style="padding: 12px; text-align: left; font-weight: 600; color: #374151;">取消类型</th>',
+      '<th style="padding: 12px; text-align: left; font-weight: 600; color: #374151;">状态</th>'
+    ];
+
+    thead.innerHTML = `<tr style="background: #f9fafb; border-bottom: 2px solid #e5e7eb;">${headerCells.join('')}</tr>`;
+
+    // 表体
+    const tbody = document.createElement('tbody');
+
+    data.forEach((row, index) => {
+      const tr = document.createElement('tr');
+      tr.style.cssText = `
+        border-bottom: 1px solid #e5e7eb;
+        ${index % 2 === 0 ? 'background: #ffffff;' : 'background: #f9fafb;'}
+      `;
+
+      // 根据alibabaInternalStatus判断取消类型
+      const cancelType = row.alibabaInternalStatus === 0 ? '采购单' :
+                        row.alibabaInternalStatus === 1 ? '1688订单' :
+                        '未知';
+
+      // 状态标识
+      const statusBadge = row.alibabaInternalStatus === 0 ?
+        `<span style="display:inline-block;padding:2px 8px;font-size:11px;color:#1d4ed8;background:#dbeafe;border-radius:8px;">可取消采购单</span>` :
+        row.alibabaInternalStatus === 1 ?
+        `<span style="display:inline-block;padding:2px 8px;font-size:11px;color:#15803d;background:#dcfce7;border-radius:8px;">可取消1688订单</span>` :
+        `<span style="display:inline-block;padding:2px 8px;font-size:11px;color:#b91c1c;background:#fee2e2;border-radius:8px;">状态未知</span>`;
+
+      const cells = [
+        `<td style="padding: 12px; color: #1f2937; font-weight: 500;">${row.orderNumber}</td>`,
+        `<td style="padding: 12px; color: #1f2937;">${row.order1688 || '-'}</td>`,
+        `<td style="padding: 12px; color: #1f2937;">${row.paymentStatus || '-'}</td>`,
+        `<td style="padding: 12px; color: #1f2937; font-weight: 500;">${cancelType}</td>`,
+        `<td style="padding: 12px; color: #1f2937;">${statusBadge}</td>`
+      ];
+
+      tr.innerHTML = cells.join('');
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(thead);
+    table.appendChild(tbody);
+    tableContainer.appendChild(table);
+
+    // 创建底部操作栏
+    const actionBar = document.createElement('div');
+    actionBar.style.cssText = `
+      padding: 16px 20px;
+      border-top: 1px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #f9fafb;
+      border-radius: 0 0 12px 12px;
+      flex-shrink: 0;
+    `;
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.id = 'sellfox-confirm-cancel-btn';
+    confirmBtn.textContent = '确认取消';
+    confirmBtn.style.cssText = `
+      padding: 9px 20px;
+      background: linear-gradient(135deg, #dc2626 0%, #ea580c 100%);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+    `;
+
+    confirmBtn.addEventListener('mouseenter', function () {
+      if (!this.disabled) this.style.boxShadow = '0 4px 12px rgba(220, 38, 38, 0.45)';
+    });
+    confirmBtn.addEventListener('mouseleave', function () {
+      this.style.boxShadow = '0 2px 8px rgba(220, 38, 38, 0.3)';
+    });
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.id = 'sellfox-cancel-action-btn';
+    cancelBtn.textContent = '关闭';
+    cancelBtn.style.cssText = `
+      padding: 9px 20px;
+      background: #9ca3af;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.2s ease;
+    `;
+
+    cancelBtn.addEventListener('mouseenter', function () {
+      this.style.background = '#6b7280';
+    });
+    cancelBtn.addEventListener('mouseleave', function () {
+      this.style.background = '#9ca3af';
+    });
+
+    const statusBox = document.createElement('div');
+    statusBox.id = 'sellfox-cancel-status';
+    statusBox.style.cssText = `flex: 1; min-width: 240px; font-size: 13px; color: #4b5563; line-height: 1.6;`;
+
+    // 根据是否为全部数据显示不同的提示信息
+    let statusMessage = '';
+    if (isAllData) {
+      statusMessage = `<span style="color:#d97706;">⚠ 未勾选任何行，将对全部 <b>${data.length}</b> 条记录执行取消操作！</span> 请核对取消类型，确认无误后点击"确认取消"按钮。`;
+    } else {
+      statusMessage = `即将取消 <b>${data.length}</b> 条记录。请核对取消类型，确认无误后点击"确认取消"按钮。`;
+    }
+
+    statusBox.innerHTML = statusMessage;
+
+    confirmBtn.addEventListener('click', () => {
+      this.executeCancelOrders(data, modal, confirmBtn, statusBox);
+    });
+
+    cancelBtn.addEventListener('click', () => {
+      this.closeModal(modal);
+    });
+
+    actionBar.appendChild(confirmBtn);
+    actionBar.appendChild(cancelBtn);
+    actionBar.appendChild(statusBox);
+
+    // 组装弹窗
+    modalContent.appendChild(header);
+    modalContent.appendChild(tableContainer);
+    modalContent.appendChild(actionBar);
+    modal.appendChild(modalContent);
+
+    // 关闭事件
+    closeBtn.addEventListener('click', () => {
+      document.body.removeChild(modal);
+    });
+
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        document.body.removeChild(modal);
+      }
+    });
+
+    document.body.appendChild(modal);
+  }
+
+  // 执行取消操作
+  async executeCancelOrders(data, modal, confirmBtn, statusBox) {
+    try {
+      confirmBtn.disabled = true;
+      const origText = confirmBtn.textContent;
+      confirmBtn.textContent = '取消中...';
+
+      let success = 0;
+      let fail = 0;
+      let skip = 0;
+      const failList = [];
+
+      for (let i = 0; i < data.length; i++) {
+        const row = data[i];
+
+        try {
+          statusBox.innerHTML =
+            `正在取消 <b>${i + 1}/${data.length}</b>：${this.escapeHtml(row.orderNumber)}<br>` +
+            `取消类型：${row.alibabaInternalStatus === 0 ? '采购单' : row.alibabaInternalStatus === 1 ? '1688订单' : '未知'}`;
+
+          let result;
+
+          if (row.alibabaInternalStatus === 0) {
+            // 取消采购单
+            result = await this.cancelPurchaseOrder(row.orderNumber);
+          } else if (row.alibabaInternalStatus === 1) {
+            // 取消1688订单
+            result = await this.cancelAlibabaOrder(row.orderId, null, true); // true表示purchaseOperationType=1
+          } else {
+            // 未知状态，跳过
+            skip++;
+            failList.push(`${row.orderNumber}：alibabaInternalStatus未知(${row.alibabaInternalStatus})`);
+            continue;
+          }
+
+          if (result.ok) {
+            success++;
+          } else {
+            fail++;
+            failList.push(`${row.orderNumber}：${result.msg || ('HTTP ' + result.status)}`);
+          }
+
+        } catch (e) {
+          fail++;
+          failList.push(`${row.orderNumber}：${e.message || String(e)}`);
+        }
+
+        // 简单限速，避免请求过快被风控
+        if (i < data.length - 1) await this.sleep(300);
+      }
+
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = origText;
+
+      let summary = `完成：成功 <b style="color:#15803d;">${success}</b>，失败 <b style="color:#b91c1c;">${fail}</b>，跳过 <b style="color:#d97706;">${skip}</b>`;
+      if (failList.length) summary += `<br>失败明细：${this.escapeHtml(failList.join('；'))}`;
+      statusBox.innerHTML = summary;
+
+      // 右上角提示显示成功和失败数量
+      const notificationMsg = `✅ 成功 ${success}，❌ 失败 ${fail}${skip > 0 ? `，⚠️ 跳过 ${skip}` : ''}`;
+      this.showNotification(notificationMsg, fail > 0 ? 'error' : 'success');
+
+      // 操作结束后自动关闭弹窗
+      await this.sleep(1500);
+      this.closeModal(modal);
+
+    } catch (error) {
+      console.error('[SellFox Plugin] 执行取消操作失败:', error);
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = '确认取消';
+      statusBox.innerHTML = `<span style="color:#b91c1c;">取消操作失败：${this.escapeHtml(error.message || String(error))}</span>`;
+    }
+  }
+
+  // 调用取消采购单接口
+  async cancelPurchaseOrder(orderNo) {
+    const url = this.siteConfig.apiBase + '/gw/sellfox/sellfox-purchase/sellfox/purchaseOrder/cancel';
+    const body = {
+      orderNo: orderNo,
+      returnPurchasePlan: true
+    };
+
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json, text/plain, */*',
+          'content-type': 'application/json',
+          'x-request-id': this.genRequestId()
+        },
+        credentials: 'include',
+        body: JSON.stringify(body)
+      });
+
+      const text = await resp.text();
+      let json = null;
+      try { json = JSON.parse(text); } catch (e) { /* 非JSON响应 */ }
+
+      const ok = resp.ok && json && json.code === 0;
+      return {
+        ok,
+        status: resp.status,
+        msg: json ? (json.msg || json.message) : null,
+        json,
+        text
+      };
+    } catch (error) {
+      console.error('[SellFox Plugin] 取消采购单请求失败:', error);
+      return {
+        ok: false,
+        status: 0,
+        msg: error.message || '网络请求失败',
+        json: null,
+        text: null
+      };
+    }
   }
 
   sleep(ms) {
