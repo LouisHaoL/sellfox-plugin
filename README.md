@@ -89,25 +89,26 @@
 
 ```
 sellfox_plugin/
-├── manifest.json          # 扩展配置文件 (Manifest V3)
-├── content.js             # 内容脚本（核心功能）
-├── inject.js              # 注入脚本（API拦截）
-├── styles.css             # 样式文件
-├── background.js          # 后台服务
-├── popup.html             # 弹窗页面
-├── popup.js               # 弹窗脚本
-├── icons/                 # 图标目录
+├── assets/                      # 资源文件目录
+│   ├── css/                    
+│   │   └── styles.css          # 主样式文件
+│   └── js/                     
+│       ├── background.js        # 后台服务
+│       ├── content.js           # 内容脚本（核心功能）
+│       ├── inject.js            # 注入脚本（API拦截）
+│       └── popup.js             # 弹窗脚本
+├── icons/                       # 图标目录
 │   ├── icon16.png
 │   ├── icon48.png
 │   ├── icon128.png
 │   ├── create-icons.html  # 图标生成工具
 │   └── README.md          # 图标说明
-├── .claude/               # Claude Code配置
-├── .git/                  # Git版本控制
-├── README.md              # 项目文档
-├── DEVELOPMENT.md         # 开发指南
-├── PURCHASE_ANALYSIS.md   # 功能详细说明
-└── package.json           # 项目配置
+├── manifest.json                # 扩展配置文件 (Manifest V3)
+├── popup.html                   # 弹窗页面
+├── README.md                    # 项目文档
+├── DEVELOPMENT.md               # 开发指南
+├── PURCHASE_ANALYSIS.md         # 功能详细说明
+└── package.json                 # 项目配置
 ```
 
 ### 技术架构
