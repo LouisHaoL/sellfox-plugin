@@ -940,6 +940,17 @@ class SellFoxPlugin {
         return;
       }
 
+      // 获取列colid，用于提取采购单号
+      const columnIds = this.getColumnIds();
+      if (!columnIds || !columnIds.orderNumber) {
+        console.error('[SellFox Plugin] 无法获取采购单号列的colid');
+        this.showNotification('无法识别采购单号列，请刷新页面重试', 'error');
+        return;
+      }
+
+      // 保存列colid供后续使用
+      this.columnIds = columnIds;
+
       // 检查是否有部分勾选（is--indeterminate）
       const hasPartialChecked = this.checkPartialChecked(shadowRoot);
 
@@ -973,12 +984,24 @@ class SellFoxPlugin {
     }
   }
 
-  // 检查是否有部分勾选
+  // 检查是否有部分勾选（检查标题行的全选复选框）
   checkPartialChecked(shadowRoot) {
     try {
-      const indeterminateCheckbox = shadowRoot.querySelector('.col--checkbox .vxe-cell--checkbox.is--indeterminate');
-      return indeterminateCheckbox !== null;
+      // 方法1：检查表头wrapper中的indeterminate复选框
+      let headerCheckbox = shadowRoot.querySelector('.vxe-table--header-wrapper .vxe-cell--checkbox.is--indeterminate');
+      if (headerCheckbox) {
+        return true;
+      }
+
+      // 方法2：直接在所有复选框中查找
+      const allIndeterminate = shadowRoot.querySelectorAll('.vxe-cell--checkbox.is--indeterminate');
+      if (allIndeterminate.length > 0) {
+        return true;
+      }
+
+      return false;
     } catch (error) {
+      console.error('[SellFox Plugin] 检查部分勾选失败:', error);
       return false;
     }
   }
@@ -996,10 +1019,13 @@ class SellFoxPlugin {
       let targetTbody = null;
       for (const selector of tbodySelectors) {
         targetTbody = shadowRoot.querySelector(selector);
-        if (targetTbody) break;
+        if (targetTbody) {
+          break;
+        }
       }
 
       if (!targetTbody) {
+        console.error('[SellFox Plugin] 未找到tbody元素');
         return [];
       }
 
@@ -1039,6 +1065,8 @@ class SellFoxPlugin {
             targetTbody.rows[lastRowIndex].scrollIntoView({ behavior: 'smooth', block: 'end' });
             await this.sleep(200);
           }
+        } else {
+          break;
         }
       }
 
@@ -1066,8 +1094,8 @@ class SellFoxPlugin {
             for (let i = 0; i < cells.length; i++) {
               if (cells[i].classList && cells[i].classList.contains(this.columnIds?.orderNumber)) {
                 const purchaseNo = this.getCellValue(cells[i]);
-                if (purchaseNo) {
-                  purchaseNumbers.push(purchaseNo);
+                if (purchaseNo && purchaseNo.trim()) {
+                  purchaseNumbers.push(purchaseNo.trim());
                 }
                 break;
               }
