@@ -932,7 +932,7 @@ class SellFoxPlugin {
   }
 
   // 显示取消采购单确认弹窗
-  showCancelPurchaseConfirm() {
+  async showCancelPurchaseConfirm() {
     try {
       const shadowRoot = this.getShadowRoot();
       if (!shadowRoot) {
@@ -1145,52 +1145,6 @@ class SellFoxPlugin {
     } catch (error) {
       console.error('[SellFox Plugin] 匹配接口数据失败:', error);
       return [];
-    }
-  }
-
-  // 从接口数据中获取所有记录
-        // 从拦截的数据（orderIdMap）中获取所有记录
-        // 这样可以避免虚拟滚动导致的DOM只渲染部分行的问题
-        const uniqueEntries = new Map(); // 使用Map去重
-
-        for (const key in this.orderIdMap) {
-          const entry = this.orderIdMap[key];
-          if (!entry) continue;
-
-          // 使用purchaseNo作为唯一标识，避免重复（因为可能通过tradeId和purchaseNo两个key都映射到同一entry）
-          const uniqueKey = entry.purchaseNo || entry.tradeId;
-          if (uniqueKey && !uniqueEntries.has(uniqueKey)) {
-            uniqueEntries.set(uniqueKey, entry);
-          }
-        }
-
-        // 将Map转换为数组
-        allData = Array.from(uniqueEntries.values()).map((entry, index) => ({
-          orderNumber: entry.purchaseNo || `UNKNOWN-${index}`,
-          order1688: entry.tradeId || '',
-          paymentStatus: this.formatPaymentStatus(entry.purchaseRequisitionStatus, entry.purchasePaidStatus),
-          createName: entry.createName || '',
-          alibabaInternalStatus: entry.alibabaInternalStatus,
-          orderId: entry.orderId,
-          rowIndex: index
-        }));
-
-        isAllData = true;
-      }
-
-      const finalData = isAllData ? allData : checkedData;
-
-      if (finalData.length === 0) {
-        this.showNotification('未找到可取消的采购单数据', 'error');
-        return;
-      }
-
-      // 显示确认弹窗，传入是否为全部数据的标识
-      this.displayCancelConfirmModal(finalData, isAllData);
-
-    } catch (error) {
-      console.error('[SellFox Plugin] 获取选中行数据失败:', error);
-      this.showNotification('获取选中行数据失败', 'error');
     }
   }
 
