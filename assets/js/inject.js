@@ -65,6 +65,8 @@
         purchasePaidStatus: r.purchasePaidStatus,         // 付款状态: 0-未付款, 1-部分付款, 2-全部付款
         purchaseRequisitionStatus: r.purchaseRequisitionStatus, // 请款状态: 0-未请款, 1-部分请款, 2-全部请款
         createName: r.createName || '',                  // 创建人
+        supplierName: r.supplierName || '',              // 供应商
+        purchaserName: r.purchaserName || '',            // 采购人
         shipFee: r.shipFee,
         alibabaShippingFee: r.alibabaShippingFee,
         totalNum: r.totalNum,

@@ -255,16 +255,6 @@ class SellFoxPlugin {
         return false;
       }
 
-      // 检查"单据"按钮是否激活
-      const orderButton = shadowRoot.querySelector('label.el-radio-button.is-active span.el-radio-button__inner');
-      if (!orderButton) {
-        return false;
-      }
-
-      if (!orderButton.textContent.includes('单据')) {
-        return false;
-      }
-
       return true;
 
     } catch (error) {
@@ -426,15 +416,58 @@ class SellFoxPlugin {
     }
   }
 
+  // 从接口数据中获取所有记录
+  getDataFromApi() {
+    try {
+      // 从拦截的数据（orderIdMap）中获取所有记录
+      const uniqueEntries = new Map();
+
+      for (const key in this.orderIdMap) {
+        const entry = this.orderIdMap[key];
+        if (!entry) continue;
+
+        // 使用purchaseNo作为唯一标识，避免重复
+        const uniqueKey = entry.purchaseNo || entry.tradeId;
+        if (uniqueKey && !uniqueEntries.has(uniqueKey)) {
+          uniqueEntries.set(uniqueKey, entry);
+        }
+      }
+
+      // 转换为统一格式
+      return Array.from(uniqueEntries.values()).map((entry, index) => {
+        const alibabaShippingFee = Number(entry.alibabaShippingFee) || 0;
+        const totalNum = Number(entry.totalNum) || 0;
+        const ratio = totalNum > 0 ? alibabaShippingFee / totalNum : 0;
+
+        return {
+          orderNumber: entry.purchaseNo || `UNKNOWN-${index}`,
+          order1688: entry.tradeId || '',
+          supplier: entry.supplierName || '',
+          purchaser: entry.purchaserName || '',
+          paymentStatus: this.formatPaymentStatus(entry.purchaseRequisitionStatus, entry.purchasePaidStatus),
+          shippingValue: alibabaShippingFee,
+          quantityValue: totalNum,
+          ratio: ratio,
+          orderId: entry.orderId,
+          alibabaInternalStatus: entry.alibabaInternalStatus
+        };
+      });
+
+    } catch (error) {
+      console.error('[SellFox Plugin] 从接口数据获取失败:', error);
+      return [];
+    }
+  }
+
   analyzeShippingData() {
     try {
       this.showNotification('正在分析数据...', 'info');
 
-      // 获取表格数据
-      const tableData = this.extractTableData();
+      // 完全从接口数据中获取，不依赖页面DOM
+      const tableData = this.getDataFromApi();
 
       if (!tableData || tableData.length === 0) {
-        this.showNotification('未找到表格数据', 'error');
+        this.showNotification('未找到接口数据，请刷新页面重试', 'error');
         return;
       }
 
@@ -697,6 +730,10 @@ class SellFoxPlugin {
         purchasePaidStatus: r.purchasePaidStatus,
         purchaseRequisitionStatus: r.purchaseRequisitionStatus,
         createName: r.createName || '',
+        supplierName: r.supplierName || '',
+        purchaserName: r.purchaserName || '',
+        alibabaShippingFee: r.alibabaShippingFee,
+        totalNum: r.totalNum,
         alibabaInternalStatus: r.alibabaInternalStatus
       };
       if (r.tradeId) {
@@ -903,8 +940,53 @@ class SellFoxPlugin {
         return;
       }
 
-      // 只从一个tbody中提取数据，避免重复（使用fixed-left-wrapper的tbody）
-      // 因为vxe-table将同一行拆分到三个wrapper中，只需从其中一个提取即可
+      // 检查是否有部分勾选（is--indeterminate）
+      const hasPartialChecked = this.checkPartialChecked(shadowRoot);
+
+      let finalData;
+      let isAllData = false;
+
+      if (hasPartialChecked) {
+        // 部分勾选：需要滚动收集所有勾选的采购单号
+        this.showNotification('正在收集所有数据...', 'info');
+        const checkedPurchaseNumbers = await this.collectAllCheckedRows(shadowRoot);
+        // 根据采购单号从接口数据匹配完整数据
+        finalData = this.matchDataFromApi(checkedPurchaseNumbers);
+        isAllData = true;
+      } else {
+        // 全选或未选：直接从接口数据获取
+        finalData = this.getDataFromApi();
+        isAllData = true;
+      }
+
+      if (finalData.length === 0) {
+        this.showNotification('未找到可取消的采购单数据', 'error');
+        return;
+      }
+
+      // 显示确认弹窗，传入是否为全部数据的标识
+      this.displayCancelConfirmModal(finalData, isAllData);
+
+    } catch (error) {
+      console.error('[SellFox Plugin] 获取选中行数据失败:', error);
+      this.showNotification('获取选中行数据失败', 'error');
+    }
+  }
+
+  // 检查是否有部分勾选
+  checkPartialChecked(shadowRoot) {
+    try {
+      const indeterminateCheckbox = shadowRoot.querySelector('.col--checkbox .vxe-cell--checkbox.is--indeterminate');
+      return indeterminateCheckbox !== null;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  // 滚动收集所有勾选的采购单号
+  async collectAllCheckedRows(shadowRoot) {
+    try {
+      const checkedPurchaseNumbers = [];
       const tbodySelectors = [
         'div.vxe-table--fixed-left-wrapper table tbody',
         'div.vxe-table--body-wrapper table tbody',
@@ -918,36 +1000,155 @@ class SellFoxPlugin {
       }
 
       if (!targetTbody) {
-        this.showNotification('未找到表格数据', 'error');
-        return;
+        return [];
       }
 
-      const tableRows = targetTbody.querySelectorAll('tr');
-      const checkedData = [];
-      let hasChecked = false;
+      // 滚动回顶部
+      targetTbody.rows[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
+      await this.sleep(300);
 
-      tableRows.forEach((row, index) => {
-        // 查找该行中是否包含col--checkbox列
+      let lastFirstPurchaseNo = '';
+      let lastLastPurchaseNo = '';
+      let stableCount = 0;
+      const maxStableIterations = 100;
+
+      while (stableCount < maxStableIterations) {
+        // 获取当前视图中的所有勾选的采购单号
+        const currentPurchaseNumbers = this.extractCheckedPurchaseNumbers(targetTbody);
+
+        // 检查第一个采购单号是否有变化
+        const firstPurchaseNo = currentPurchaseNumbers.length > 0 ? currentPurchaseNumbers[0] : '';
+        const lastPurchaseNo = currentPurchaseNumbers.length > 0 ? currentPurchaseNumbers[currentPurchaseNumbers.length - 1] : '';
+
+        if (firstPurchaseNo === lastFirstPurchaseNo && lastPurchaseNo === lastLastPurchaseNo) {
+          stableCount++;
+          if (stableCount >= 3) {
+            // 数据稳定，停止滚动
+            break;
+          }
+        } else {
+          stableCount = 0;
+          lastFirstPurchaseNo = firstPurchaseNo;
+          lastLastPurchaseNo = lastPurchaseNo;
+        }
+
+        // 滚动到最后一个勾选的行
+        if (currentPurchaseNumbers.length > 0) {
+          const lastRowIndex = this.findRowIndexByPurchaseNo(targetTbody, currentPurchaseNumbers[currentPurchaseNumbers.length - 1]);
+          if (lastRowIndex >= 0 && lastRowIndex < targetTbody.rows.length) {
+            targetTbody.rows[lastRowIndex].scrollIntoView({ behavior: 'smooth', block: 'end' });
+            await this.sleep(200);
+          }
+        }
+      }
+
+      // 收集所有勾选的采购单号
+      return this.extractCheckedPurchaseNumbers(targetTbody);
+
+    } catch (error) {
+      console.error('[SellFox Plugin] 滚动收集数据失败:', error);
+      return [];
+    }
+  }
+
+  // 提取勾选的采购单号
+  extractCheckedPurchaseNumbers(tbody) {
+    const purchaseNumbers = [];
+    try {
+      const tableRows = tbody.querySelectorAll('tr');
+      tableRows.forEach((row) => {
         const checkboxCol = row.querySelector('.col--checkbox');
         if (checkboxCol) {
-          // 查找带有is--checked class的复选框span元素
           const checkedCheckbox = checkboxCol.querySelector('.vxe-cell--checkbox.is--checked');
           if (checkedCheckbox) {
-            hasChecked = true;
-            // 提取该行的数据
-            const rowData = this.extractRowData(row, index);
-            if (rowData) {
-              checkedData.push(rowData);
+            // 从该行提取采购单号
+            const cells = row.querySelectorAll('td');
+            for (let i = 0; i < cells.length; i++) {
+              if (cells[i].classList && cells[i].classList.contains(this.columnIds?.orderNumber)) {
+                const purchaseNo = this.getCellValue(cells[i]);
+                if (purchaseNo) {
+                  purchaseNumbers.push(purchaseNo);
+                }
+                break;
+              }
             }
           }
         }
       });
+    } catch (error) {
+      console.error('[SellFox Plugin] 提取采购单号失败:', error);
+    }
+    return [...new Set(purchaseNumbers)]; // 去重
+  }
 
-      // 如果没有勾选的数据，则从拦截的数据中获取所有记录
-      let allData = [];
-      let isAllData = false;
+  // 根据采购单号查找行索引
+  findRowIndexByPurchaseNo(tbody, purchaseNo) {
+    try {
+      const tableRows = tbody.querySelectorAll('tr');
+      for (let i = 0; i < tableRows.length; i++) {
+        const row = tableRows[i];
+        const cells = row.querySelectorAll('td');
+        for (let j = 0; j < cells.length; j++) {
+          if (cells[j].classList && cells[j].classList.contains(this.columnIds?.orderNumber)) {
+            const rowPurchaseNo = this.getCellValue(cells[j]);
+            if (rowPurchaseNo === purchaseNo) {
+              return i;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[SellFox Plugin] 查找行索引失败:', error);
+    }
+    return -1;
+  }
 
-      if (!hasChecked) {
+  // 根据采购单号从接口数据匹配完整数据
+  matchDataFromApi(purchaseNumbers) {
+    try {
+      const matchedData = [];
+
+      for (const purchaseNo of purchaseNumbers) {
+        // 通过 purchaseNo 查找对应的接口数据
+        const key = 'po:' + String(purchaseNo);
+        if (this.orderIdMap[key]) {
+          const entry = this.orderIdMap[key];
+          matchedData.push({
+            orderNumber: entry.purchaseNo || purchaseNo,
+            order1688: entry.tradeId || '',
+            paymentStatus: this.formatPaymentStatus(entry.purchaseRequisitionStatus, entry.purchasePaidStatus),
+            createName: entry.createName || '',
+            alibabaInternalStatus: entry.alibabaInternalStatus,
+            orderId: entry.orderId
+          });
+        } else {
+          // 如果通过purchaseNo找不到，尝试通过tradeId查找
+          for (const mapKey in this.orderIdMap) {
+            const entry = this.orderIdMap[mapKey];
+            if (entry.tradeId === purchaseNo || entry.purchaseNo === purchaseNo) {
+              matchedData.push({
+                orderNumber: entry.purchaseNo || purchaseNo,
+                order1688: entry.tradeId || '',
+                paymentStatus: this.formatPaymentStatus(entry.purchaseRequisitionStatus, entry.purchasePaidStatus),
+                createName: entry.createName || '',
+                alibabaInternalStatus: entry.alibabaInternalStatus,
+                orderId: entry.orderId
+              });
+              break;
+            }
+          }
+        }
+      }
+
+      return matchedData;
+
+    } catch (error) {
+      console.error('[SellFox Plugin] 匹配接口数据失败:', error);
+      return [];
+    }
+  }
+
+  // 从接口数据中获取所有记录
         // 从拦截的数据（orderIdMap）中获取所有记录
         // 这样可以避免虚拟滚动导致的DOM只渲染部分行的问题
         const uniqueEntries = new Map(); // 使用Map去重
