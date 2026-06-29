@@ -203,7 +203,7 @@ class SellFoxPlugin {
       return;
     }
 
-    // 检查页面元素状态：仅在「待到货」标签 + 「单据」视图下才展示按钮
+    // 检查页面元素状态：仅在「待到货」标签下才展示按钮（不限制单据/商品视图）
     const isWaitingForGoods = this.checkPageState();
     if (!isWaitingForGoods) {
       // 切换到其他标签页（待下单等）或切到「商品」视图时，隐藏按钮
