@@ -60,8 +60,11 @@
       var r = rows[i] || {};
       mapped.push({
         orderId: r.orderId,                              // 取消 1688 订单接口需要的 id
-        tradeId: r.tradeId == null ? '' : String(r.tradeId), // 1688 订单号，作为匹配主键
-        purchaseNo: r.purchaseNo || '',                  // 采购单号，兜底匹配
+        tradeId: r.tradeId == null ? '' : String(r.tradeId), // 1688 订单号
+        purchaseNo: r.purchaseNo || '',                  // 采购单号
+        purchasePaidStatus: r.purchasePaidStatus,         // 付款状态: 0-未付款, 1-部分付款, 2-全部付款
+        purchaseRequisitionStatus: r.purchaseRequisitionStatus, // 请款状态: 0-未请款, 1-部分请款, 2-全部请款
+        createName: r.createName || '',                  // 创建人
         shipFee: r.shipFee,
         alibabaShippingFee: r.alibabaShippingFee,
         totalNum: r.totalNum,
@@ -72,7 +75,6 @@
       });
     }
 
-    log('捕获到 page.json 响应，行数:', mapped.length, 'url:', url);
     if (mapped.length > 0) {
       postRows(mapped, url);
     }

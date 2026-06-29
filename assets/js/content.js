@@ -78,7 +78,8 @@ class SellFoxPlugin {
         orderNumber: null,   // 采购单号
         order1688: null,     // 1688订单号
         paymentStatus: null, // 请款状态
-        supplier: null       // 供应商
+        supplier: null,      // 供应商
+        createName: null      // 创建人
       };
 
       // 查找表头行
@@ -103,6 +104,7 @@ class SellFoxPlugin {
           if (text.includes('1688订单号') && !columnIds.order1688) columnIds.order1688 = colid;
           if (text.includes('请款状态') && !columnIds.paymentStatus) columnIds.paymentStatus = colid;
           if (text.includes('供应商') && !columnIds.supplier) columnIds.supplier = colid;
+          if (text.includes('创建人') && !columnIds.createName) columnIds.createName = colid;
         });
       });
 
@@ -211,11 +213,22 @@ class SellFoxPlugin {
 
     // 状态匹配：若按钮已存在则直接显示（避免重复创建/重复提示）
     const shadowRoot = this.getShadowRoot();
-    const existingBtn = shadowRoot && shadowRoot.getElementById('sellfox-analyze-shipping-btn');
-    if (existingBtn) {
-      existingBtn.style.display = '';
+    const existingAnalyzeBtn = shadowRoot && shadowRoot.getElementById('sellfox-analyze-shipping-btn');
+    const existingCancelBtn = shadowRoot && shadowRoot.getElementById('sellfox-cancel-purchase-btn');
+
+    if (existingAnalyzeBtn && existingCancelBtn) {
+      // 两个按钮都存在，直接显示
+      existingAnalyzeBtn.style.display = '';
+      existingCancelBtn.style.display = '';
       this.purchasePageInjected = true;
       return;
+    }
+
+    // 如果只有部分按钮存在，删除已存在的按钮，重新注入所有按钮
+    if (existingAnalyzeBtn || existingCancelBtn) {
+      if (existingAnalyzeBtn) existingAnalyzeBtn.remove();
+      if (existingCancelBtn) existingCancelBtn.remove();
+      this.purchasePageInjected = false;
     }
 
     // 注入采购管理页面专用按钮
@@ -681,6 +694,9 @@ class SellFoxPlugin {
         orderId: r.orderId,
         tradeId: r.tradeId || '',
         purchaseNo: r.purchaseNo || '',
+        purchasePaidStatus: r.purchasePaidStatus,
+        purchaseRequisitionStatus: r.purchaseRequisitionStatus,
+        createName: r.createName || '',
         alibabaInternalStatus: r.alibabaInternalStatus
       };
       if (r.tradeId) {
@@ -1043,21 +1059,49 @@ class SellFoxPlugin {
       }
 
       // 如果还是没找到，从拦截数据中遍历查找
+      let matchedEntry = null;
       if (alibabaInternalStatus === null) {
         for (const key in this.orderIdMap) {
           const entry = this.orderIdMap[key];
           if (entry.purchaseNo === orderNumber || String(entry.tradeId) === String(order1688)) {
             alibabaInternalStatus = entry.alibabaInternalStatus;
             orderId = entry.orderId;
+            matchedEntry = entry;
             break;
           }
         }
+      } else {
+        // 如果已经找到了，保存对应的entry
+        if (order1688 && this.orderIdMap[String(order1688)]) {
+          matchedEntry = this.orderIdMap[String(order1688)];
+        } else if (orderNumber && this.orderIdMap['po:' + String(orderNumber)]) {
+          matchedEntry = this.orderIdMap['po:' + String(orderNumber)];
+        }
+      }
+
+      // 从拦截数据中获取请款状态和创建人
+      let paymentStatusText = paymentStatus || '';
+      let createName = '';
+
+      if (matchedEntry) {
+        // 处理请款状态显示
+        const requisitionStatus = matchedEntry.purchaseRequisitionStatus;
+        const paidStatus = matchedEntry.purchasePaidStatus;
+
+        if (requisitionStatus !== null && requisitionStatus !== undefined) {
+          const statusMap = { 0: '未请款', 1: '部分请款', 2: '全部请款' };
+          paymentStatusText = statusMap[requisitionStatus] || paymentStatusText;
+        }
+
+        // 获取创建人
+        createName = matchedEntry.createName || '';
       }
 
       return {
         orderNumber: orderNumber || `UNKNOWN-${index}`,
         order1688: order1688 || '',
-        paymentStatus: paymentStatus || '',
+        paymentStatus: paymentStatusText,
+        createName: createName,
         alibabaInternalStatus: alibabaInternalStatus,
         orderId: orderId,
         rowIndex: index
@@ -1168,6 +1212,7 @@ class SellFoxPlugin {
       '<th style="padding: 12px; text-align: left; font-weight: 600; color: #374151;">采购单号</th>',
       '<th style="padding: 12px; text-align: left; font-weight: 600; color: #374151;">1688订单号</th>',
       '<th style="padding: 12px; text-align: left; font-weight: 600; color: #374151;">请款状态</th>',
+      '<th style="padding: 12px; text-align: left; font-weight: 600; color: #374151;">创建人</th>',
       '<th style="padding: 12px; text-align: left; font-weight: 600; color: #374151;">取消类型</th>',
       '<th style="padding: 12px; text-align: left; font-weight: 600; color: #374151;">状态</th>'
     ];
@@ -1200,6 +1245,7 @@ class SellFoxPlugin {
         `<td style="padding: 12px; color: #1f2937; font-weight: 500;">${row.orderNumber}</td>`,
         `<td style="padding: 12px; color: #1f2937;">${row.order1688 || '-'}</td>`,
         `<td style="padding: 12px; color: #1f2937;">${row.paymentStatus || '-'}</td>`,
+        `<td style="padding: 12px; color: #1f2937;">${row.createName || '-'}</td>`,
         `<td style="padding: 12px; color: #1f2937; font-weight: 500;">${cancelType}</td>`,
         `<td style="padding: 12px; color: #1f2937;">${statusBadge}</td>`
       ];
