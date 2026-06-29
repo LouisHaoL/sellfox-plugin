@@ -877,6 +877,23 @@ class SellFoxPlugin {
 
   // ===== 取消采购单相关方法 =====
 
+  // 格式化请款状态显示
+  formatPaymentStatus(requisitionStatus, paidStatus) {
+    // 优先显示请款状态
+    if (requisitionStatus !== null && requisitionStatus !== undefined) {
+      const statusMap = { 0: '未请款', 1: '部分请款', 2: '全部请款' };
+      return statusMap[requisitionStatus] || '';
+    }
+
+    // 如果没有请款状态，显示付款状态
+    if (paidStatus !== null && paidStatus !== undefined) {
+      const statusMap = { 0: '未付款', 1: '部分付款', 2: '全部付款' };
+      return statusMap[paidStatus] || '';
+    }
+
+    return '';
+  }
+
   // 显示取消采购单确认弹窗
   showCancelPurchaseConfirm() {
     try {
@@ -926,21 +943,37 @@ class SellFoxPlugin {
         }
       });
 
-      // 如果没有勾选的数据，则将表格内的数据全部计入
+      // 如果没有勾选的数据，则从拦截的数据中获取所有记录
       let allData = [];
       let isAllData = false;
 
       if (!hasChecked) {
-        tableRows.forEach((row, index) => {
-          const checkboxCol = row.querySelector('.col--checkbox');
-          if (checkboxCol) {
-            // 提取所有包含复选框列的行数据
-            const rowData = this.extractRowData(row, index);
-            if (rowData) {
-              allData.push(rowData);
-            }
+        // 从拦截的数据（orderIdMap）中获取所有记录
+        // 这样可以避免虚拟滚动导致的DOM只渲染部分行的问题
+        const uniqueEntries = new Map(); // 使用Map去重
+
+        for (const key in this.orderIdMap) {
+          const entry = this.orderIdMap[key];
+          if (!entry) continue;
+
+          // 使用purchaseNo作为唯一标识，避免重复（因为可能通过tradeId和purchaseNo两个key都映射到同一entry）
+          const uniqueKey = entry.purchaseNo || entry.tradeId;
+          if (uniqueKey && !uniqueEntries.has(uniqueKey)) {
+            uniqueEntries.set(uniqueKey, entry);
           }
-        });
+        }
+
+        // 将Map转换为数组
+        allData = Array.from(uniqueEntries.values()).map((entry, index) => ({
+          orderNumber: entry.purchaseNo || `UNKNOWN-${index}`,
+          order1688: entry.tradeId || '',
+          paymentStatus: this.formatPaymentStatus(entry.purchaseRequisitionStatus, entry.purchasePaidStatus),
+          createName: entry.createName || '',
+          alibabaInternalStatus: entry.alibabaInternalStatus,
+          orderId: entry.orderId,
+          rowIndex: index
+        }));
+
         isAllData = true;
       }
 
