@@ -16,20 +16,20 @@
   "content_scripts": [
     {
       "matches": ["https://www.sellfox.com/*"],
-      "js": ["inject.js"],
+      "js": ["assets/js/inject.js"],
       "world": "MAIN",
       "run_at": "document_start",
       "all_frames": true
     },
     {
       "matches": ["https://www.sellfox.com/*"],
-      "js": ["content.js"],
-      "css": ["styles.css"],
+      "js": ["assets/js/content.js"],
+      "css": ["assets/css/styles.css"],
       "run_at": "document_idle"
     }
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "assets/js/background.js"
   },
   "action": {
     "default_popup": "popup.html",
